@@ -1,2 +1,10 @@
 .DS_Store
+lacells.db
+lacells.db.bak
+towers_mozilla.csv
+towers_mozilla.csv.gz
+towers_opencellid.csv
+towers_opencellid.csv.gz
+towers_openbmap.zip
+cells.sqlite
 
