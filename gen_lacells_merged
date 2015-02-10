@@ -106,7 +106,6 @@ INSERT INTO cells_weighted SELECT mcc, mnc, lac, cellId, long*max(1,samples), la
 DROP TABLE cells_new;
 INSERT INTO cells SELECT mcc, mnc, lac, cid, SUM(longitude)/SUM(samples), SUM(latitude)/SUM(samples), SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples), SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac, cid;
 DROP TABLE cells_weighted;
-DELETE FROM cells WHERE mcc != 310 AND mcc != 311;
 CREATE INDEX _idx1 ON cells (mcc, mnc, lac, cid);
 CREATE INDEX _idx2 ON cells (lac, cid);
 VACUUM;
