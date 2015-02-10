@@ -43,11 +43,11 @@ echo 'Getting cell tower data from OpenBmap'
 if [ -e towers_openbmap.zip ] ; then
     rm towers_openbmap.zip
 fi
-if [ -e towers_opencellid.csv ] ; then
+if [ -e cells.sqlite ] ; then
     mv -f cells.sqlite cells.sqlite.bak
 fi
 wget --output-document=towers_openbmap.zip "http://www.radiocells.org/openbmap/static/cells-mobile.zip?attachment"
-unzip towers_openbmap.zip -j
+unzip -j towers_openbmap.zip
 
 #
 #   Backup previous database and build new one.
@@ -117,6 +117,23 @@ CREATE TEMP TABLE cells_new(radio TEXT, mcc INTEGER, mnc INTEGER, lac INTEGER, c
 .import towers_mozilla.csv cells_new
 INSERT INTO cells_weighted SELECT mcc, mnc, lac, cellId, long*max(1,samples), lat*max(1,samples), -1*max(1,samples), min(max(range, 500),100000)*max(1,samples), max(1,samples) FROM cells_new;
 DROP TABLE cells_new;
+ATTACH cells.sqlite AS openbmap;
+CREATE TEMP TABLE cells_openbmap(mcc INTEGER, mnc INTEGER, lac INTEGER, cid INTEGER, longitude REAL, latitude REAL, altitude REAL, accuracy REAL, samples INTEGER);
+INSERT INTO cells_openbmap SELECT mcc, mnc, lac, cid, longitude, latitude, NULL, NULL, max(1, measurements) FROM openbmap.cell_zone;
+
+--populate altitude and accuracy with average from cells_weighted
+--WITH tmp AS (SELECT mcc, mnc, lac, cid, SUM(altitude)/SUM(samples) AS altitude, SUM(accuracy)/SUM(samples) AS accuracy FROM cells_weighted GROUP BY mcc, mnc, lac, cid) UPDATE cells_openbmap SET altitude = tmp.altitude, accuracy = tmp.accuracy WHERE mcc = tmp.mcc AND mnc = tmp.mnc AND lac = tmp.lac AND cid = tmp.cid;
+
+--if accuracy is still unset, populate it with a default value (1250 m)
+UPDATE cells_openbmap SET accuracy = 1250 WHERE accuracy IS NULL;
+
+--TODO if altitude is still unset, populate with interpolated values
+
+--if altitude is still unset, set to 0
+UPDATE cells_openbmap SET altitude = 0 WHERE altitude IS NULL;
+
+INSERT INTO cells_weighted SELECT mcc, mnc, lac, cid, longitude*max(1,samples), latitude*max(1,samples), altitude*max(1,samples), accuracy*max(1,samples), samples FROM cells_openbmap;
+DROP TABLE cells_openbmap;
 INSERT INTO cells SELECT mcc, mnc, lac, cid, SUM(longitude)/SUM(samples), SUM(latitude)/SUM(samples), SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples), SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac, cid;
 DROP TABLE cells_weighted;
 CREATE INDEX _idx1 ON cells (mcc, mnc, lac, cid);
