@@ -37,6 +37,19 @@ wget --output-document=towers_opencellid.csv.gz "http://opencellid.org/downloads
 gunzip towers_opencellid.csv.gz
 
 #
+#   Get latest cell tower data from OpenBmap
+#
+echo 'Getting cell tower data from OpenBmap'
+if [ -e towers_openbmap.zip ] ; then
+    rm towers_openbmap.zip
+fi
+if [ -e towers_opencellid.csv ] ; then
+    mv -f cells.sqlite cells.sqlite.bak
+fi
+wget --output-document=towers_openbmap.zip "http://www.radiocells.org/openbmap/static/cells-mobile.zip?attachment"
+unzip towers_openbmap.zip -j
+
+#
 #   Backup previous database and build new one.
 #
 #   Since Mozilla and OpenCellId have agreed to a common CSV format
