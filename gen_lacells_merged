@@ -122,24 +122,38 @@ CREATE TEMP TABLE cells_openbmap(mcc INTEGER, mnc INTEGER, lac INTEGER, cid INTE
 INSERT INTO cells_openbmap SELECT mcc, mnc, area, cid, longitude, latitude, NULL, NULL, max(1, measurements) FROM openbmap.cell_zone;
 
 --populate altitude and accuracy with average from cells_weighted
-CREATE TEMP TABLE tmp1(mcc INTEGER, mnc INTEGER, lac INTEGER, cid INTEGER, altitude REAL, accuracy REAL);
-INSERT INTO tmp1 SELECT mcc, mnc, lac, cid, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac, cid;
-UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp1 WHERE mcc = tmp1.mcc AND mnc = tmp1.mnc AND lac = tmp1.lac AND cid = tmp1.cid);
-UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp1 WHERE mcc = tmp1.mcc AND mnc = tmp1.mnc AND lac = tmp1.lac AND cid = tmp1.cid);
-DROP TABLE tmp1;
+CREATE TEMP TABLE tmp(mcc INTEGER, mnc INTEGER, lac INTEGER, cid INTEGER, altitude REAL, accuracy REAL);
+INSERT INTO tmp SELECT mcc, mnc, lac, cid, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac, cid;
+UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp WHERE mcc = tmp.mcc AND mnc = tmp.mnc AND lac = tmp.lac AND cid = tmp.cid);
+UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp WHERE mcc = tmp.mcc AND mnc = tmp.mnc AND lac = tmp.lac AND cid = tmp.cid);
+DROP TABLE tmp;
 
 --if altitude and accuracy are still unset, assume average for other cells in same LAC (from cells_weighted)
-CREATE TEMP TABLE tmp2(mcc INTEGER, mnc INTEGER, lac INTEGER, altitude REAL, accuracy REAL);
-INSERT INTO tmp2 SELECT mcc, mnc, lac, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac;
-UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp2 WHERE mcc = tmp2.mcc AND mnc = tmp2.mnc AND lac = tmp2.lac);
-UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp2 WHERE mcc = tmp2.mcc AND mnc = tmp2.mnc AND lac = tmp2.lac);
-DROP TABLE tmp2;
-
---if accuracy is still unset, populate it with a default value (1250 m)
-UPDATE cells_openbmap SET accuracy = 1250 WHERE accuracy IS NULL;
+CREATE TEMP TABLE tmp(mcc INTEGER, mnc INTEGER, lac INTEGER, altitude REAL, accuracy REAL);
+INSERT INTO tmp SELECT mcc, mnc, lac, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc, mnc, lac;
+UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp WHERE altitude IS NULL AND mcc = tmp.mcc AND mnc = tmp.mnc AND lac = tmp.lac);
+UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp WHERE accuracy IS NULL AND mcc = tmp.mcc AND mnc = tmp.mnc AND lac = tmp.lac);
+DROP TABLE tmp;
 
 --if altitude is still unset, populate with interpolated values
 UPDATE cells_openbmap SET altitude = (SELECT SUM(altitude)/SUM(samples) FROM cells_weighted WHERE ABS(cells_weighted.latitude - latitude) <= 0.01 AND ABS(cells_weighted.longitude - longitude) <= 0.01) WHERE altitude IS NULL;
+
+--if altitude and accuracy are still unset, assume average for other cells in same network (from cells_weighted)
+CREATE TEMP TABLE tmp(mcc INTEGER, mnc INTEGER, altitude REAL, accuracy REAL);
+INSERT INTO tmp SELECT mcc, mnc, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc, mnc;
+UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp WHERE altitude IS NULL AND mcc = tmp.mcc AND mnc = tmp.mnc);
+UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp WHERE accuracy IS NULL AND mcc = tmp.mcc AND mnc = tmp.mnc);
+DROP TABLE tmp;
+
+--if altitude and accuracy are still unset, assume average for other cells in same country (from cells_weighted)
+CREATE TEMP TABLE tmp(mcc INTEGER, altitude REAL, accuracy REAL);
+INSERT INTO tmp SELECT mcc, SUM(altitude)/SUM(samples), SUM(accuracy)/SUM(samples) FROM cells_weighted GROUP BY mcc;
+UPDATE cells_openbmap SET altitude = (SELECT altitude FROM tmp WHERE altitude IS NULL AND mcc = tmp.mcc);
+UPDATE cells_openbmap SET accuracy = (SELECT accuracy FROM tmp WHERE accuracy IS NULL AND mcc = tmp.mcc);
+DROP TABLE tmp;
+
+--if accuracy is still unset, populate it with a default value (1250 m)
+UPDATE cells_openbmap SET accuracy = 1250 WHERE accuracy IS NULL;
 
 --if altitude is still unset, set to 0
 UPDATE cells_openbmap SET altitude = 0 WHERE altitude IS NULL;
